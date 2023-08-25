@@ -9,13 +9,14 @@ logger = getLogger(__name__)
 
 
 class Cache:
-    def __init__(self, engine="file", cache_dir="cache", prefix=""):
+    def __init__(self, engine="file", cache_dir=".cache", prefix="", key_digest_size=8):
         logger.info(f"Using {engine} engine")
         if engine == "file":
             logger.info(f"Using {cache_dir} as cache directory")
             os.makedirs(cache_dir, exist_ok=True)
         self.cache_dir = cache_dir
         self.prefix = prefix
+        self.key_digest_size = key_digest_size
 
     @staticmethod
     def get_args(fn, args, kwargs):
@@ -88,8 +89,10 @@ class Cache:
                 + func.__module__
                 + func.__qualname__
                 + str(self.get_args(func, args, kwargs))
-            )
-            key += hashlib.shake_128(str(dis.code_info(func)).encode()).hexdigest(16)
+            ) + "."
+            key += hashlib.blake2s(
+                str(dis.code_info(func)).encode(), digest_size=self.key_digest_size
+            ).hexdigest()
 
             # 2. Check if the cache key exists
             if os.path.exists(os.path.join(self.cache_dir, key)):
