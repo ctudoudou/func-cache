@@ -8,6 +8,52 @@ import hashlib
 logger = getLogger(__name__)
 
 
+class RedisCache:
+    def __init__(
+        self,
+        unix_socket_path=None,
+        encoding="utf-8",
+        encoding_errors="strict",
+        charset=None,
+        uri=None,
+    ):
+        import redis
+
+        if uri:
+            self.redis = redis.Redis.from_url(uri)
+        elif unix_socket_path:
+            self.redis = redis.Redis(
+                unix_socket_path=unix_socket_path,
+                encoding=encoding,
+                encoding_errors=encoding_errors,
+                charset=charset,
+            )
+        else:
+            raise ValueError("Either uri or unix_socket_path must be provided")
+
+    def get(self, key):
+        return self.redis.get(key)
+
+    def set(self, key, value, ex=None):
+        self.redis.set(key, value, ex=ex)
+
+
+class MemcachedCache:
+    def __init__(self, servers=None, default_timeout=300):
+        import pylibmc
+
+        if servers is None:
+            raise ValueError("servers must be provided")
+        self.mc = pylibmc.Client(servers, binary=True)
+        self.default_timeout = default_timeout
+
+    def get(self, key):
+        return self.mc.get(key)
+
+    def set(self, key, value, ex=None):
+        self.mc.set(key, value, time=ex)
+
+
 class Cache:
     def __init__(self, engine="file", cache_dir=".cache", prefix="", key_digest_size=8):
         logger.info(f"Using {engine} engine")
