@@ -1,10 +1,18 @@
+from json import dumps, loads
 import os
 from inspect import signature
+from logging import getLogger
+import dis
+import hashlib
+
+logger = getLogger(__name__)
 
 
 class Cache:
     def __init__(self, engine="file", cache_dir="cache", prefix=""):
+        logger.info(f"Using {engine} engine")
         if engine == "file":
+            logger.info(f"Using {cache_dir} as cache directory")
             os.makedirs(cache_dir, exist_ok=True)
         self.cache_dir = cache_dir
         self.prefix = prefix
@@ -69,24 +77,37 @@ class Cache:
     def get_prefix(self):
         return self.prefix
 
+    def pickle(self, obj):
+        return dumps(obj, separators=(",", ":"))
+
     def __call__(self, func):
         def wrapper(*args, **kwargs):
             # 1. Get the cache key
-
             key = (
                 self.get_prefix()
                 + func.__module__
                 + func.__qualname__
                 + str(self.get_args(func, args, kwargs))
             )
+            key += hashlib.shake_128(str(dis.code_info(func)).encode()).hexdigest(16)
+
             # 2. Check if the cache key exists
             if os.path.exists(os.path.join(self.cache_dir, key)):
                 with open(os.path.join(self.cache_dir, key)) as cache_file:
-                    return cache_file.read()
+                    try:
+                        return loads(cache_file.read())
+                    except Exception as e:
+                        logger.error(f"Error loading cache file {key}: {e}")
+                        os.remove(os.path.join(self.cache_dir, key))
+
             # 3. If the cache key doesn't exist, call the function and write the result to the cache
             result = func(*args, **kwargs)
-            with open(os.path.join(self.cache_dir, key), "w") as cache_file:
-                cache_file.write(result)
+            try:
+                with open(os.path.join(self.cache_dir, key), "w") as cache_file:
+                    cache_file.write(self.pickle(result))
+            except Exception as e:
+                logger.error(f"Error writing cache file {key}: {e}")
+
             return result
 
         return wrapper
